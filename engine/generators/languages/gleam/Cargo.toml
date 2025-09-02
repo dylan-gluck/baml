@@ -1,0 +1,19 @@
+[package]
+name = "generators-gleam"
+version.workspace = true
+edition = "2021"
+authors.workspace = true
+description.workspace = true
+license-file.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+askama.workspace = true
+dir-writer = { path = "../../utils/dir_writer" }
+internal-baml-core.workspace = true
+baml-types.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+prettydiff = "0.8.0"
+test-harness = { path = "../../utils/test_harness" }

@@ -34,6 +34,11 @@ pub fn generate_sdk(
             let features = RbLanguageFeatures::default();
             features.generate_sdk(ir, gen)?
         }
+        GeneratorOutputType::Gleam => {
+            use generators_gleam::GleamLanguageFeatures;
+            let features = GleamLanguageFeatures;
+            features.generate_sdk(ir, gen)?
+        }
     };
 
     // Run on_generate commands

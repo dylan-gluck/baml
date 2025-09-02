@@ -2933,6 +2933,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "generators-gleam"
+version = "0.206.1"
+dependencies = [
+ "anyhow",
+ "askama",
+ "baml-types",
+ "dir-writer",
+ "internal-baml-core",
+ "prettydiff",
+ "serde_json",
+ "test-harness",
+]
+
+[[package]]
 name = "generators-go"
 version = "0.206.1"
 dependencies = [
@@ -2952,6 +2966,7 @@ dependencies = [
  "anyhow",
  "baml-log",
  "dir-writer",
+ "generators-gleam",
  "generators-go",
  "generators-openapi",
  "generators-python",
