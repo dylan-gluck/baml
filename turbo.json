@@ -85,7 +85,7 @@
       "persistent": true
     },
     "@baml/fern#dev": {
-      "dependsOn": ["fern-sage-chatbot#build"],
+      "dependsOn": [],
       "cache": false,
       "persistent": true
     },
