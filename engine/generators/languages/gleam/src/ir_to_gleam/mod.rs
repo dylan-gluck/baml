@@ -92,7 +92,7 @@ fn type_to_gleam_inner(field: &TypeNonStreaming, _pkg: &CurrentRenderPackage, me
         
         T::Union(variants, _) => {
             // Generate a union type name based on the variants
-            let union_name = format!("Union{}", variants.len());
+            let union_name = format!("Union{}", variants.iter_include_null().len());
             TypeGleam::Union {
                 module: "baml_types".to_string(),
                 name: union_name,
@@ -113,6 +113,22 @@ fn type_to_gleam_inner(field: &TypeNonStreaming, _pkg: &CurrentRenderPackage, me
             TypeGleam::TypeAlias {
                 module: "baml_types".to_string(),
                 name: name.clone(),
+                meta,
+            }
+        }
+        
+        T::Top(_) => {
+            // Top type can be anything - use Dynamic
+            TypeGleam::Dynamic {
+                reason: "Top type (can be any type)".to_string(),
+                meta,
+            }
+        }
+        
+        T::Arrow(_, _) => {
+            // Arrow types (functions) are not supported in Gleam codegen
+            TypeGleam::Dynamic {
+                reason: "Function types are not yet supported in Gleam".to_string(),
                 meta,
             }
         }

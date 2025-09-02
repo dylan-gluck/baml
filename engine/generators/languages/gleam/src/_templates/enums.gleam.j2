@@ -1,11 +1,15 @@
-{% if docstring %}
-/// {{ docstring }}
-{% endif %}
+{% match docstring -%}
+{%- when Some with (doc) %}
+/// {{ doc }}
+{%- when None -%}
+{%- endmatch %}
 pub type {{ name }} {
 {% for (value_name, value_doc) in values %}
-{% if value_doc %}
-  /// {{ value_doc }}
-{% endif %}
+{% match value_doc -%}
+{%- when Some with (doc) %}
+  /// {{ doc }}
+{%- when None -%}
+{%- endmatch %}
   {{ value_name|type_name }}
 {% endfor %}
 }

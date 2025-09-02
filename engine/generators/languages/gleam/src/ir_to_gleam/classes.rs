@@ -14,7 +14,7 @@ pub fn ir_class_to_gleam<'a>(class: &ClassWalker, pkg: &'a CurrentRenderPackage)
             let field_non_streaming = field_type_ir.to_non_streaming_type(pkg.ir.as_ref());
             let field_type = super::type_to_gleam(&field_non_streaming, pkg);
             FieldGleam {
-                docstring: field.item.attributes.get("description").and_then(|v| v.as_string_value(&Default::default()).ok()).flatten(),
+                docstring: field.item.elem.docstring.as_ref().map(|d| d.0.clone()),
                 name: field.name().to_string(),
                 r#type: field_type,
                 pkg,
@@ -24,7 +24,7 @@ pub fn ir_class_to_gleam<'a>(class: &ClassWalker, pkg: &'a CurrentRenderPackage)
 
     ClassGleam {
         name: class.name().to_string(),
-        docstring: class.item.attributes.get("description").and_then(|v| v.as_string_value(&Default::default()).ok()).flatten(),
+        docstring: class.item.elem.docstring.as_ref().map(|d| d.0.clone()),
         fields,
         dynamic: class.walk_fields().any(|f| f.item.attributes.dynamic()),
         pkg,
@@ -40,7 +40,7 @@ pub fn ir_class_to_gleam_stream<'a>(class: &ClassWalker, pkg: &'a CurrentRenderP
             let field_streaming = field_type_ir.to_streaming_type(pkg.ir.as_ref());
             let field_type = super::stream_type_to_gleam(&field_streaming, pkg);
             FieldGleam {
-                docstring: field.item.attributes.get("description").and_then(|v| v.as_string_value(&Default::default()).ok()).flatten(),
+                docstring: field.item.elem.docstring.as_ref().map(|d| d.0.clone()),
                 name: field.name().to_string(),
                 r#type: field_type,
                 pkg,
@@ -50,7 +50,7 @@ pub fn ir_class_to_gleam_stream<'a>(class: &ClassWalker, pkg: &'a CurrentRenderP
 
     ClassGleam {
         name: class.name().to_string(),
-        docstring: class.item.attributes.get("description").and_then(|v| v.as_string_value(&Default::default()).ok()).flatten(),
+        docstring: class.item.elem.docstring.as_ref().map(|d| d.0.clone()),
         fields,
         dynamic: class.walk_fields().any(|f| f.item.attributes.dynamic()),
         pkg,

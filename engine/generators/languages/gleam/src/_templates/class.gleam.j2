@@ -1,6 +1,8 @@
-{% if docstring %}
-/// {{ docstring }}
-{% endif %}
+{% match docstring -%}
+{%- when Some with (doc) %}
+/// {{ doc }}
+{%- when None -%}
+{%- endmatch %}
 pub type {{ name }} {
   {{ name }}(
 {% for field in fields %}

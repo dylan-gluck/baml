@@ -19,13 +19,13 @@ mod filters {
             .collect::<String>();
         Ok(pascal_case)
     }
-    
+
     // This filter converts to snake_case for Gleam field names
     pub fn field_name(s: &str, _: &dyn askama::Values) -> askama::Result<String> {
         // Convert camelCase or PascalCase to snake_case
         let mut result = String::new();
         let mut chars = s.chars().peekable();
-        
+
         while let Some(ch) = chars.next() {
             if ch.is_uppercase() {
                 if !result.is_empty() {
@@ -36,13 +36,14 @@ mod filters {
                 result.push(ch);
             }
         }
-        
+
         Ok(result)
     }
 }
 
 pub mod class {
     use super::*;
+    use askama::Template;
 
     #[derive(askama::Template)]
     #[template(path = "class.gleam.j2", escape = "none", ext = "txt")]
@@ -54,12 +55,14 @@ pub mod class {
         pub pkg: &'a CurrentRenderPackage,
     }
 
-    /// A field in a class.
+    /// A field in a .
     ///
     /// ```askama
-    /// {% if docstring.is_some() -%}
-    /// /// {{ docstring.as_ref().unwrap() }}
-    /// {%- endif %}
+    /// {% match docstring -%}
+    /// {%- when Some with (doc) -%}
+    /// /// {{ doc }}
+    /// {%- when None -%}
+    /// {%- endmatch %}
     /// {{ name|field_name }}: {{ type.serialize_type(pkg) }}
     /// ```
     #[derive(askama::Template, Clone)]
@@ -70,7 +73,7 @@ pub mod class {
         pub r#type: TypeGleam,
         pub pkg: &'a CurrentRenderPackage,
     }
-    
+
     impl std::fmt::Debug for FieldGleam<'_> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(
@@ -84,6 +87,7 @@ pub mod class {
 
 pub mod enums {
     use super::*;
+    use askama::Template;
 
     #[derive(askama::Template)]
     #[template(path = "enums.gleam.j2", escape = "none")]
@@ -98,6 +102,7 @@ pub mod enums {
 
 pub mod union {
     use super::*;
+    use askama::Template;
 
     #[derive(askama::Template)]
     #[template(path = "unions.gleam.j2", escape = "none")]
@@ -120,13 +125,16 @@ pub mod union {
 
 pub mod type_aliases {
     use super::*;
+    use askama::Template;
 
     /// A type alias in Gleam.
     ///
     /// ```askama
-    /// {% if docstring.is_some() -%}
-    /// /// {{ docstring.as_ref().unwrap() }}
-    /// {%- endif %}
+    /// {% match docstring -%}
+    /// {%- when Some with (doc) -%}
+    /// /// {{ doc }}
+    /// {%- when None -%}
+    /// {%- endmatch %}
     /// pub type {{ name }} = {{ type_.serialize_type(pkg) }}
     /// ```
     #[derive(askama::Template)]
@@ -146,9 +154,9 @@ pub mod type_aliases {
 /// import gleam/option.{type Option}
 /// import gleam/result.{type Result}
 /// import baml_gleam
-/// 
+///
 /// pub type Checked(a) = Result(a, List(String))
-/// 
+///
 /// pub type Image = baml_gleam.Image
 /// pub type Audio = baml_gleam.Audio
 /// pub type Video = baml_gleam.Video
@@ -158,7 +166,9 @@ pub mod type_aliases {
 #[template(in_doc = true, escape = "none", ext = "txt")]
 struct GleamTypesUtils {}
 
-pub(crate) fn render_gleam_types_utils(_pkg: &CurrentRenderPackage) -> Result<String, askama::Error> {
+pub(crate) fn render_gleam_types_utils(
+    _pkg: &CurrentRenderPackage,
+) -> Result<String, askama::Error> {
     use askama::Template;
     GleamTypesUtils {}.render()
 }
@@ -171,7 +181,7 @@ pub(crate) fn render_gleam_types_utils(_pkg: &CurrentRenderPackage) -> Result<St
 /// import gleam/option.{type Option}
 /// import gleam/result.{type Result}
 /// import baml_gleam
-/// 
+///
 /// {% for class in classes %}
 /// {{ class.render()? }}
 /// {% endfor %}
@@ -198,7 +208,7 @@ pub fn render_classes(
 /// import gleam/json.{type Json}
 /// import gleam/option.{type Option}
 /// import gleam/result.{type Result}
-/// 
+///
 /// {% for enum_ in enums %}
 /// {{ enum_.render()? }}
 /// {% endfor %}
@@ -225,7 +235,7 @@ pub fn render_enums(
 /// import gleam/json.{type Json}
 /// import gleam/option.{type Option}
 /// import gleam/result.{type Result}
-/// 
+///
 /// {% for union_type in unions %}
 /// {{ union_type.render()? }}
 /// {% endfor %}
@@ -268,5 +278,5 @@ pub fn render_type_aliases(
 // Re-export the types at the module level for easier access
 pub use class::{ClassGleam, FieldGleam};
 pub use enums::EnumGleam;
-pub use union::{UnionGleam, VariantGleam};
 pub use type_aliases::TypeAliasGleam;
+pub use union::{UnionGleam, VariantGleam};

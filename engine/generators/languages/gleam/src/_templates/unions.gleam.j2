@@ -1,6 +1,8 @@
-{% if docstring %}
-/// {{ docstring }}
-{% endif %}
+{% match docstring -%}
+{%- when Some with (doc) %}
+/// {{ doc }}
+{%- when None -%}
+{%- endmatch %}
 pub type {{ name }} {
 {% for variant in variants %}
   {{ variant.name|type_name }}({{ variant.type_.serialize_type(pkg) }})

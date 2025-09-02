@@ -23,7 +23,7 @@ pub fn ir_function_to_gleam(function: &FunctionWalker, pkg: &CurrentRenderPackag
     let stream_return_type = super::stream_type_to_gleam(&output_streaming, pkg);
 
     FunctionGleam {
-        documentation: function.item.attributes.get("description").and_then(|v| v.as_string_value(&Default::default()).ok()).flatten(),
+        documentation: None,
         name: function.name().to_string(),
         args,
         return_type,

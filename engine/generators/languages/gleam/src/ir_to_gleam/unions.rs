@@ -12,11 +12,12 @@ pub fn ir_union_to_gleam<'a>(
 ) -> Option<UnionGleam<'a>> {
     match union_type {
         TypeNonStreaming::Union(variants, _) => {
-            let name = format!("Union{}", variants.len());
+            let variants_vec = variants.iter_include_null();
+            let name = format!("Union{}", variants_vec.len());
             let cffi_name = format!("Union{}", name);
 
-            let union_variants = variants
-                .iter()
+            let union_variants = variants_vec
+                .into_iter()
                 .enumerate()
                 .map(|(idx, variant)| {
                     let variant_name = format!("Variant{}", idx);
