@@ -1,0 +1,43 @@
+{% if docstring %}
+/// {{ docstring }}
+{% endif %}
+pub type {{ name }} {
+{% for (value_name, value_doc) in values %}
+{% if value_doc %}
+  /// {{ value_doc }}
+{% endif %}
+  {{ value_name|type_name }}
+{% endfor %}
+}
+
+/// Convert {{ name }} to string
+pub fn {{ name|lower }}_to_string(value: {{ name }}) -> String {
+  case value {
+{% for (value_name, _) in values %}
+    {{ value_name|type_name }} -> "{{ value_name }}"
+{% endfor %}
+  }
+}
+
+/// Parse {{ name }} from string
+pub fn {{ name|lower }}_from_string(value: String) -> Result({{ name }}, String) {
+  case value {
+{% for (value_name, _) in values %}
+    "{{ value_name }}" -> Ok({{ value_name|type_name }})
+{% endfor %}
+    _ -> Error("Invalid {{ name }} value: " <> value)
+  }
+}
+
+/// JSON decoder for {{ name }}
+pub fn {{ name|lower }}_decoder() -> dynamic.Decoder({{ name }}) {
+  fn(value) {
+    use str <- result.try(dynamic.string(value))
+    {{ name|lower }}_from_string(str)
+  }
+}
+
+/// JSON encoder for {{ name }}
+pub fn {{ name|lower }}_to_json(value: {{ name }}) -> Json {
+  json.string({{ name|lower }}_to_string(value))
+}

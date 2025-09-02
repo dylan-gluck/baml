@@ -1,29 +1,26 @@
-use internal_baml_core::ir::Enum;
-use crate::package::CurrentRenderPackage;
+use internal_baml_core::ir::EnumWalker;
 
-pub struct GleamEnum {
-    pub name: String,
-    pub values: Vec<GleamEnumValue>,
-}
+use crate::{
+    generated_types::EnumGleam,
+    package::CurrentRenderPackage,
+};
 
-pub struct GleamEnumValue {
-    pub name: String,
-    pub alias: Option<String>,
-}
-
-pub fn ir_enum_to_gleam(enum_def: &Enum, _pkg: &CurrentRenderPackage) -> GleamEnum {
+pub fn ir_enum_to_gleam<'a>(enum_def: &EnumWalker, pkg: &'a CurrentRenderPackage) -> EnumGleam<'a> {
     let values = enum_def
-        .elem
-        .values
-        .iter()
-        .map(|(value, _docstring)| GleamEnumValue {
-            name: value.elem.0.clone(),
-            alias: None, // Enum values in BAML don't have aliases directly
+        .walk_values()
+        .map(|value| {
+            (
+                value.name().to_string(),
+                value.item.attributes.get("description").and_then(|v| v.as_string_value(&Default::default()).ok()).flatten(),
+            )
         })
         .collect();
 
-    GleamEnum {
-        name: enum_def.elem.name.clone(),
+    EnumGleam {
+        name: enum_def.name().to_string(),
+        docstring: enum_def.item.attributes.get("description").and_then(|v| v.as_string_value(&Default::default()).ok()).flatten(),
         values,
+        dynamic: false, // Gleam enums are not dynamic
+        pkg,
     }
 }

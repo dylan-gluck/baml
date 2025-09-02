@@ -1,0 +1,139 @@
+//// Generated BAML client
+
+import gleam/result
+import gleam/option.{type Option}
+import gleam/dynamic
+import gleam/json
+import baml_types.{
+{%- for e in enums %}
+  type {{ e.name }},
+{%- endfor %}
+{%- for class in classes %}
+  type {{ class.name }},
+{%- endfor %}
+}
+import baml_runtime
+import baml_ffi
+
+/// BAML Client for calling AI functions
+pub type BamlClient {
+  BamlClient(
+    runtime: baml_runtime.BamlRuntime,
+    ctx_manager: baml_runtime.ContextManager,
+  )
+}
+
+/// Create a new BAML client from the default runtime
+pub fn new() -> BamlClient {
+  let runtime = baml_runtime.from_files("baml_src")
+  let ctx_manager = baml_runtime.create_context_manager(runtime)
+  BamlClient(runtime: runtime, ctx_manager: ctx_manager)
+}
+
+/// Create a new BAML client from a directory
+pub fn from_directory(path: String) -> BamlClient {
+  let runtime = baml_runtime.from_directory(path)
+  let ctx_manager = baml_runtime.create_context_manager(runtime)
+  BamlClient(runtime: runtime, ctx_manager: ctx_manager)
+}
+
+{%- for func in funcs %}
+
+/// {{ func.docstring | default(value="AI function: " ~ func.name) }}
+{%- if func.is_async %}
+pub fn {{ func.name }}(
+  client: BamlClient,
+  {%- for arg in func.args %}
+  {{ arg.name }}: {{ arg.gleam_type }},
+  {%- endfor %}
+) -> Result({{ func.return_type }}, String) {
+  let args = json.object([
+    {%- for arg in func.args %}
+    #("{{ arg.name }}", {{ arg.encoder }}({{ arg.name }})),
+    {%- endfor %}
+  ])
+  
+  use raw_result <- result.try(
+    baml_runtime.call_function(
+      client.runtime,
+      "{{ func.name }}",
+      args,
+      client.ctx_manager,
+    )
+  )
+  
+  {{ func.decoder }}(raw_result)
+}
+{%- else %}
+/// Synchronous version of {{ func.name }}
+pub fn {{ func.name }}_sync(
+  client: BamlClient,
+  {%- for arg in func.args %}
+  {{ arg.name }}: {{ arg.gleam_type }},
+  {%- endfor %}
+) -> Result({{ func.return_type }}, String) {
+  let args = json.object([
+    {%- for arg in func.args %}
+    #("{{ arg.name }}", {{ arg.encoder }}({{ arg.name }})),
+    {%- endfor %}
+  ])
+  
+  use raw_result <- result.try(
+    baml_runtime.call_function_sync(
+      client.runtime,
+      "{{ func.name }}",
+      args,
+      client.ctx_manager,
+    )
+  )
+  
+  {{ func.decoder }}(raw_result)
+}
+{%- endif %}
+
+{%- if func.supports_streaming %}
+/// Stream results from {{ func.name }}
+pub fn {{ func.name }}_stream(
+  client: BamlClient,
+  {%- for arg in func.args %}
+  {{ arg.name }}: {{ arg.gleam_type }},
+  {%- endfor %}
+) -> Result(baml_runtime.Stream({{ func.partial_return_type }}), String) {
+  let args = json.object([
+    {%- for arg in func.args %}
+    #("{{ arg.name }}", {{ arg.encoder }}({{ arg.name }})),
+    {%- endfor %}
+  ])
+  
+  baml_runtime.stream_function(
+    client.runtime,
+    "{{ func.name }}",
+    args,
+    client.ctx_manager,
+  )
+}
+{%- endif %}
+{%- endfor %}
+
+/// Client with options support
+pub type BamlClientWithOptions {
+  BamlClientWithOptions(
+    client: BamlClient,
+    options: BamlOptions,
+  )
+}
+
+pub type BamlOptions {
+  BamlOptions(
+    client_registry: Option(baml_runtime.ClientRegistry),
+    type_builder: Option(baml_runtime.TypeBuilder),
+  )
+}
+
+/// Create a client with custom options
+pub fn with_options(
+  client: BamlClient,
+  options: BamlOptions,
+) -> BamlClientWithOptions {
+  BamlClientWithOptions(client: client, options: options)
+}

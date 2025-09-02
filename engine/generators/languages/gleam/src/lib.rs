@@ -1,10 +1,22 @@
+use baml_types::ir_type::TypeGeneric;
 use dir_writer::{FileCollector, GeneratorArgs, IntermediateRepr, LanguageFeatures};
+use anyhow::Result;
+use internal_baml_core::ir::TypeValue;
+
+use crate::{
+    functions::{render_functions, render_functions_stream, render_functions_parse, render_type_map},
+    generated_types::{
+        render_classes, render_enums, render_unions, render_type_aliases,
+        render_gleam_types_utils
+    },
+};
 
 mod functions;
 mod generated_types;
 mod ir_to_gleam;
 mod package;
 mod r#type;
+mod templates;
 mod utils;
 
 #[derive(Default)]
@@ -33,15 +45,153 @@ impl LanguageFeatures for GleamLanguageFeatures {
         &self,
         collector: &mut FileCollector<Self>,
         ir: std::sync::Arc<IntermediateRepr>,
-        _args: &GeneratorArgs,
+        args: &GeneratorArgs,
     ) -> Result<(), anyhow::Error> {
         let pkg = package::CurrentRenderPackage::new("baml_client", ir.clone());
         
-        // Generate core files
-        collector.add_file("src/baml_client.gleam", functions::render_client(&pkg)?)?;
-        collector.add_file("src/baml_types.gleam", generated_types::render_types(&pkg)?)?;
-        collector.add_file("src/baml_runtime.gleam", functions::render_runtime(&pkg)?)?;
-        collector.add_file("src/baml_ffi.gleam", functions::render_ffi(&pkg)?)?;
+        // Convert IR functions to Gleam functions
+        let functions = ir
+            .walk_functions()
+            .map(|f| ir_to_gleam::functions::ir_function_to_gleam(&f, &pkg))
+            .collect::<Vec<_>>();
+        
+        // Generate main functions file
+        collector.add_file(
+            "src/baml_functions.gleam",
+            render_functions(&functions, &pkg)?,
+        )?;
+        
+        // Generate streaming functions
+        collector.add_file(
+            "src/baml_functions_stream.gleam",
+            render_functions_stream(&functions, &pkg)?,
+        )?;
+        
+        // Generate parse functions
+        collector.add_file(
+            "src/baml_functions_parse.gleam",
+            render_functions_parse(&functions, &pkg)?,
+        )?;
+        
+        // Convert IR classes to Gleam classes
+        let gleam_classes = ir
+            .walk_classes()
+            .map(|c| ir_to_gleam::classes::ir_class_to_gleam(&c, &pkg))
+            .collect::<Vec<_>>();
+        
+        // Convert IR enums to Gleam enums
+        let enums = ir
+            .walk_enums()
+            .map(|e| ir_to_gleam::enums::ir_enum_to_gleam(&e, &pkg))
+            .collect::<Vec<_>>();
+        
+        // Convert unions
+        let unions = {
+            let mut unions = Vec::new();
+            // Unions in BAML are TypeNonStreaming::Union variants, collected during type conversion
+            // We'll handle them differently for now
+            unions
+        };
+        
+        // Convert type aliases
+        let type_aliases = ir.walk_type_aliases().collect::<Vec<_>>();
+        
+        // Handle invalid cycles (similar to Go)
+        let invalid_cycles = ir
+            .structural_recursive_alias_cycles()
+            .iter()
+            .filter(|&cycle| {
+                // find all cycles considered invalid in Gleam
+                cycle.iter().all(|(_, field_type)| {
+                    field_type
+                        .find_if(
+                            &|t| match t {
+                                TypeGeneric::Class { .. } => true,
+                                TypeGeneric::Enum { .. } => true,
+                                TypeGeneric::Literal(..) => true,
+                                TypeGeneric::Primitive(TypeValue::Null, ..) => false,
+                                TypeGeneric::Primitive(..) => true,
+                                _ => false,
+                            },
+                            true,
+                        )
+                        .is_empty()
+                })
+            })
+            .flat_map(|cycle| {
+                let keys = cycle.keys().cloned().collect::<Vec<_>>();
+                let first_key = keys[0].clone();
+                keys.into_iter().map(move |k| (k, first_key.clone()))
+            })
+            .collect::<baml_types::BamlMap<_, _>>();
+        
+        let mut gleam_type_aliases = type_aliases
+            .iter()
+            .map(|c| {
+                ir_to_gleam::type_aliases::ir_type_alias_to_gleam(
+                    &c,
+                    &pkg,
+                    invalid_cycles.get(&c.elem().name),
+                )
+            })
+            .collect::<Vec<_>>();
+        gleam_type_aliases.sort_by(|a, b| a.name.cmp(&b.name));
+        
+        // Generate types file with classes
+        collector.add_file(
+            "src/baml_types/classes.gleam",
+            render_classes(&gleam_classes, &pkg)?,
+        )?;
+        
+        // Generate enums file
+        collector.add_file(
+            "src/baml_types/enums.gleam",
+            render_enums(&enums, &pkg)?,
+        )?;
+        
+        // Generate unions file
+        if !unions.is_empty() {
+            collector.add_file(
+                "src/baml_types/unions.gleam",
+                render_unions(&unions, &pkg)?,
+            )?;
+        }
+        
+        // Generate type aliases file
+        if !gleam_type_aliases.is_empty() {
+            collector.add_file(
+                "src/baml_types/aliases.gleam",
+                render_type_aliases(&gleam_type_aliases)?,
+            )?;
+        }
+        
+        // Generate type utilities
+        collector.add_file(
+            "src/baml_types/utils.gleam",
+            render_gleam_types_utils(&pkg)?,
+        )?;
+        
+        // Generate type map for runtime reflection
+        let type_names: Vec<(String, String)> = gleam_classes
+            .iter()
+            .map(|c| (c.name.clone(), format!("baml_types.{}", c.name)))
+            .chain(
+                enums.iter()
+                    .map(|e| (e.name.clone(), format!("baml_types.{}", e.name)))
+            )
+            .collect();
+        
+        collector.add_file(
+            "src/baml_type_map.gleam",
+            render_type_map(&type_names)?,
+        )?;
+        
+        // Use template-based generation for remaining files
+        let runtime_template = templates::GleamRuntime::try_from((ir.as_ref(), args))?;
+        collector.add_file("src/baml_runtime.gleam", runtime_template.render()?)?;
+        
+        let ffi_template = templates::GleamFFI::default();
+        collector.add_file("src/baml_ffi.gleam", ffi_template.render()?)?;
         
         Ok(())
     }
@@ -68,8 +218,8 @@ mod tests {
 
         use dir_writer::LanguageFeatures;
 
-        let gen_type = baml_types::GeneratorOutputType::from_str(crate::GleamLanguageFeatures::name())
+        let gen_type = internal_baml_core::configuration::GeneratorOutputType::from_str(crate::GleamLanguageFeatures::name())
             .expect("GleamLanguageFeatures name should be a valid GeneratorOutputType");
-        assert_eq!(gen_type, baml_types::GeneratorOutputType::Gleam);
+        assert_eq!(gen_type, internal_baml_core::configuration::GeneratorOutputType::Gleam);
     }
 }

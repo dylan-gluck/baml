@@ -1,0 +1,43 @@
+{% if docstring %}
+/// {{ docstring }}
+{% endif %}
+pub type {{ name }} {
+{% for variant in variants %}
+  {{ variant.name|type_name }}({{ variant.type_.serialize_type(pkg) }})
+{% endfor %}
+}
+
+/// JSON decoder for {{ name }}
+pub fn {{ name|lower }}_decoder() -> dynamic.Decoder({{ name }}) {
+  fn(value) {
+    // Try each variant decoder in order
+{% for variant in variants %}
+    case {{ variant.type_.decoder_name() }}(value) {
+      Ok(val) -> Ok({{ variant.name|type_name }}(val))
+      Error(_) -> {
+{% endfor %}
+        Error("Could not decode {{ name }} from any variant")
+{% for variant in variants %}
+      }
+    }
+{% endfor %}
+  }
+}
+
+/// JSON encoder for {{ name }}
+pub fn {{ name|lower }}_to_json(value: {{ name }}) -> Json {
+  case value {
+{% for variant in variants %}
+    {{ variant.name|type_name }}(val) -> json.from(val)
+{% endfor %}
+  }
+}
+
+/// Get variant name for {{ name }}
+pub fn {{ name|lower }}_variant_name(value: {{ name }}) -> String {
+  case value {
+{% for variant in variants %}
+    {{ variant.name|type_name }}(_) -> "{{ variant.name }}"
+{% endfor %}
+  }
+}

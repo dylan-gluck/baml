@@ -1,7 +1,7 @@
 [package]
+edition = "2021"
 name = "generators-gleam"
 version.workspace = true
-edition = "2021"
 authors.workspace = true
 description.workspace = true
 license-file.workspace = true

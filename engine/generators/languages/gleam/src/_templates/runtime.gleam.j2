@@ -1,0 +1,206 @@
+//// Generated BAML runtime integration
+
+import gleam/result
+import gleam/option.{type Option}
+import gleam/dict.{type Dict}
+import gleam/json
+import gleam/dynamic.{type Dynamic}
+import gleam/list
+import gleam/string
+import baml_ffi
+
+/// BAML Runtime handle
+pub opaque type BamlRuntime {
+  BamlRuntime(handle: baml_ffi.RuntimeHandle)
+}
+
+/// Context manager for runtime operations
+pub opaque type ContextManager {
+  ContextManager(handle: baml_ffi.ContextHandle)
+}
+
+/// Type builder for dynamic types
+pub opaque type TypeBuilder {
+  TypeBuilder(registry: baml_ffi.TypeRegistry)
+}
+
+/// Client registry for managing AI clients
+pub opaque type ClientRegistry {
+  ClientRegistry(registry: baml_ffi.ClientRegistryHandle)
+}
+
+/// Stream handle for streaming responses
+pub opaque type Stream(a) {
+  Stream(handle: baml_ffi.StreamHandle, decoder: fn(Dynamic) -> Result(a, String))
+}
+
+/// Create runtime from BAML files
+pub fn from_files(path: String) -> BamlRuntime {
+  let handle = baml_ffi.runtime_from_files(path, inlined_file_map())
+  BamlRuntime(handle: handle)
+}
+
+/// Create runtime from directory
+pub fn from_directory(path: String) -> BamlRuntime {
+  let handle = baml_ffi.runtime_from_directory(path)
+  BamlRuntime(handle: handle)
+}
+
+/// Create a new context manager
+pub fn create_context_manager(runtime: BamlRuntime) -> ContextManager {
+  let BamlRuntime(handle: runtime_handle) = runtime
+  let ctx_handle = baml_ffi.create_context_manager(runtime_handle)
+  ContextManager(handle: ctx_handle)
+}
+
+/// Call a BAML function
+pub fn call_function(
+  runtime: BamlRuntime,
+  function_name: String,
+  args: json.Json,
+  ctx_manager: ContextManager,
+) -> Result(Dynamic, String) {
+  let BamlRuntime(handle: runtime_handle) = runtime
+  let ContextManager(handle: ctx_handle) = ctx_manager
+  
+  let args_string = json.to_string(args)
+  
+  baml_ffi.call_function(
+    runtime_handle,
+    function_name,
+    args_string,
+    ctx_handle,
+    option.None,  // client_registry
+    option.None,  // type_builder
+  )
+}
+
+/// Call a BAML function synchronously
+pub fn call_function_sync(
+  runtime: BamlRuntime,
+  function_name: String,
+  args: json.Json,
+  ctx_manager: ContextManager,
+) -> Result(Dynamic, String) {
+  let BamlRuntime(handle: runtime_handle) = runtime
+  let ContextManager(handle: ctx_handle) = ctx_manager
+  
+  let args_string = json.to_string(args)
+  
+  baml_ffi.call_function_sync(
+    runtime_handle,
+    function_name,
+    args_string,
+    ctx_handle,
+    option.None,  // client_registry
+    option.None,  // type_builder
+  )
+}
+
+/// Stream results from a BAML function
+pub fn stream_function(
+  runtime: BamlRuntime,
+  function_name: String,
+  args: json.Json,
+  ctx_manager: ContextManager,
+) -> Result(Stream(a), String) {
+  let BamlRuntime(handle: runtime_handle) = runtime
+  let ContextManager(handle: ctx_handle) = ctx_manager
+  
+  let args_string = json.to_string(args)
+  
+  use stream_handle <- result.try(
+    baml_ffi.stream_function(
+      runtime_handle,
+      function_name,
+      args_string,
+      ctx_handle,
+      option.None,  // client_registry
+      option.None,  // type_builder
+    )
+  )
+  
+  Ok(Stream(handle: stream_handle, decoder: dynamic.dynamic))
+}
+
+/// Get next item from stream
+pub fn stream_next(stream: Stream(a)) -> Result(Option(a), String) {
+  let Stream(handle: handle, decoder: decoder) = stream
+  
+  use maybe_data <- result.try(baml_ffi.stream_next(handle))
+  
+  case maybe_data {
+    option.None -> Ok(option.None)
+    option.Some(data) -> {
+      use decoded <- result.try(decoder(data))
+      Ok(option.Some(decoded))
+    }
+  }
+}
+
+/// Close a stream
+pub fn stream_close(stream: Stream(a)) -> Nil {
+  let Stream(handle: handle, decoder: _) = stream
+  baml_ffi.stream_close(handle)
+}
+
+/// Get the inlined BAML file map
+fn inlined_file_map() -> Dict(String, String) {
+  dict.from_list([
+    {%- for (file_path, content) in inlined_files %}
+    #("{{ file_path }}", "{{ content | escape_string }}"),
+    {%- endfor %}
+  ])
+}
+
+/// Create a new type builder
+pub fn new_type_builder() -> TypeBuilder {
+  TypeBuilder(registry: baml_ffi.create_type_registry())
+}
+
+/// Add a type to the type builder
+pub fn add_type(
+  builder: TypeBuilder,
+  type_name: String,
+  type_def: json.Json,
+) -> TypeBuilder {
+  let TypeBuilder(registry: registry) = builder
+  let updated_registry = baml_ffi.add_type(
+    registry,
+    type_name,
+    json.to_string(type_def)
+  )
+  TypeBuilder(registry: updated_registry)
+}
+
+/// Create a new client registry
+pub fn new_client_registry() -> ClientRegistry {
+  ClientRegistry(registry: baml_ffi.create_client_registry())
+}
+
+/// Add a client to the registry
+pub fn add_client(
+  registry: ClientRegistry,
+  client_name: String,
+  provider: String,
+  options: json.Json,
+) -> ClientRegistry {
+  let ClientRegistry(registry: reg) = registry
+  let updated_reg = baml_ffi.add_client(
+    reg,
+    client_name,
+    provider,
+    json.to_string(options)
+  )
+  ClientRegistry(registry: updated_reg)
+}
+
+/// Set a client as the default
+pub fn set_default_client(
+  registry: ClientRegistry,
+  client_name: String,
+) -> ClientRegistry {
+  let ClientRegistry(registry: reg) = registry
+  let updated_reg = baml_ffi.set_default_client(reg, client_name)
+  ClientRegistry(registry: updated_reg)
+}

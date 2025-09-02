@@ -1,0 +1,43 @@
+{% if docstring %}
+/// {{ docstring }}
+{% endif %}
+pub type {{ name }} {
+  {{ name }}(
+{% for field in fields %}
+    {{ field.render()? }},
+{% endfor %}
+  )
+}
+
+{% if dynamic %}
+/// Dynamic fields support for {{ name }}
+pub fn {{ name|lower }}_with_dynamic(base: {{ name }}, dynamic_fields: List(#(String, Dynamic))) -> {{ name }} {
+  // TODO: Implement dynamic field merging
+  base
+}
+{% endif %}
+
+/// JSON decoder for {{ name }}
+pub fn {{ name|lower }}_decoder() -> dynamic.Decoder({{ name }}) {
+  dynamic.decode{{ fields.len() }}(
+    {{ name }},
+{% for field in fields %}
+    dynamic.field("{{ field.name }}", {{ field.type.decoder_name() }}),
+{% endfor %}
+  )
+}
+
+/// JSON encoder for {{ name }}
+pub fn {{ name|lower }}_to_json(value: {{ name }}) -> Json {
+  let {{ name }}(
+{% for field in fields %}
+    {{ field.name|field_name }},
+{% endfor %}
+  ) = value
+  
+  json.object([
+{% for field in fields %}
+    #("{{ field.name }}", json.from({{ field.name|field_name }})),
+{% endfor %}
+  ])
+}

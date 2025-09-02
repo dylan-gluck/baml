@@ -1,0 +1,181 @@
+//// Generated BAML partial types for streaming
+
+import gleam/option.{type Option, None, Some}
+import gleam/dict.{type Dict}
+import gleam/json
+import gleam/dynamic.{type Dynamic}
+import gleam/result
+import baml_types
+
+/// Partial types are used during streaming when data is incomplete
+
+{#- Generate Partial Classes -#}
+{%- for class in partial_classes %}
+
+{%- if let Some(docstring) = class.docstring %}
+/// Partial version of {{ class.base_name }}
+/// {{ docstring }}
+{%- else %}
+/// Partial version of {{ class.base_name }} for streaming
+{%- endif %}
+pub type Partial{{ class.name }} {
+  Partial{{ class.name }}(
+    {%- for field in class.fields %}
+    /// Optional field during streaming
+    {{ field.name }}: Option({{ field.partial_type }}),
+    {%- endfor %}
+    {%- if class.dynamic %}
+    /// Additional dynamic properties
+    dynamic_properties: Dict(String, Dynamic),
+    {%- endif %}
+  )
+}
+
+/// Create a new Partial{{ class.name }}
+pub fn new_partial_{{ class.name | snake_case }}() -> Partial{{ class.name }} {
+  Partial{{ class.name }}(
+    {%- for field in class.fields %}
+    {{ field.name }}: None,
+    {%- endfor %}
+    {%- if class.dynamic %}
+    dynamic_properties: dict.new(),
+    {%- endif %}
+  )
+}
+
+/// Update a field in Partial{{ class.name }}
+{%- for field in class.fields %}
+pub fn set_{{ class.name | snake_case }}_{{ field.name }}(
+  partial: Partial{{ class.name }},
+  value: {{ field.partial_type }}
+) -> Partial{{ class.name }} {
+  let Partial{{ class.name }}(
+    {%- for field in class.fields %}
+    {{ field.name }}: {{ field.name }}_val,
+    {%- endfor %}
+    {%- if class.dynamic %}
+    dynamic_properties: dynamic_properties,
+    {%- endif %}
+  ) = partial
+  
+  Partial{{ class.name }}(
+    {%- for field in class.fields %}
+    {{ field.name }}: {{ field.name }}_val,
+    {%- endfor %}
+    {%- if class.dynamic %}
+    dynamic_properties: dynamic_properties,
+    {%- endif %}
+  )
+}
+{%- endfor %}
+
+/// Try to convert Partial{{ class.name }} to complete {{ class.name }}
+pub fn partial_{{ class.name | snake_case }}_to_complete(
+  partial: Partial{{ class.name }}
+) -> Result(baml_types.{{ class.name }}, String) {
+  let Partial{{ class.name }}(
+    {%- for field in class.fields %}
+    {{ field.name }}: {{ field.name }}_opt,
+    {%- endfor %}
+    {%- if class.dynamic %}
+    dynamic_properties: dynamic_properties,
+    {%- endif %}
+  ) = partial
+  
+{% for field in class.fields %}
+{%- if not field.optional %}
+  use {{ field.name }} <- result.try(
+    option.to_result({{ field.name }}_opt, "Missing required field: {{ field.name }}")
+  )
+{% endif -%}
+{% endfor %}
+  
+  Ok(baml_types.{{ class.name }}(
+    {%- for field in class.fields %}
+    {%- if field.optional %}
+    {{ field.name }}: {{ field.name }}_opt,
+    {%- else %}
+    {{ field.name }}: {{ field.name }},
+    {%- endif %}
+    {%- endfor %}
+    {%- if class.dynamic %}
+    dynamic_properties: dynamic_properties,
+    {%- endif %}
+  ))
+}
+
+/// Decode Partial{{ class.name }} from dynamic value
+pub fn partial_{{ class.name | snake_case }}_decoder(value: Dynamic) -> Result(Partial{{ class.name }}, String) {
+  use obj <- result.try(
+    dynamic.dict(dynamic.string, dynamic.dynamic)(value)
+    |> result.map_error(fn(_) { "Expected object for Partial{{ class.name }}" })
+  )
+  
+  {%- for field in class.fields %}
+  let {{ field.name }}_opt = case dict.get(obj, "{{ field.name }}") {
+    Ok(val) -> 
+      case {{ field.partial_decoder }}(val) {
+        Ok(decoded) -> Some(decoded)
+        Error(_) -> None
+      }
+    Error(_) -> None
+  }
+  {%- endfor %}
+  
+  {%- if class.dynamic %}
+  let static_fields = [
+    {%- for field in class.fields %}
+    "{{ field.name }}",
+    {%- endfor %}
+  ]
+  
+  let dynamic_properties = obj
+    |> dict.filter(fn(key, _) { !list.contains(static_fields, key) })
+  {%- endif %}
+  
+  Ok(Partial{{ class.name }}(
+    {%- for field in class.fields %}
+    {{ field.name }}: {{ field.name }}_opt,
+    {%- endfor %}
+    {%- if class.dynamic %}
+    dynamic_properties: dynamic_properties,
+    {%- endif %}
+  ))
+}
+{%- endfor %}
+
+{#- Generate Partial Type Aliases -#}
+{%- for alias in partial_structural_recursive_alias_cycles %}
+
+/// Partial type alias: {{ alias.name }}
+pub type Partial{{ alias.name }} = {{ alias.partial_target }}
+
+/// Decoder for Partial{{ alias.name }}
+pub fn partial_{{ alias.name | snake_case }}_decoder(value: Dynamic) -> Result(Partial{{ alias.name }}, String) {
+  {{ alias.partial_target_decoder }}(value)
+}
+{%- endfor %}
+
+{#- Generate Partial Union Types -#}
+{%- for u in partial_unions %}
+
+/// Partial union type: {{ u.name }}
+pub type Partial{{ u.name }} {
+  {%- for variant in u.variants %}
+  Partial{{ u.name }}{{ variant.name }}({{ variant.partial_type }})
+  {%- endfor %}
+  /// Unknown variant during streaming
+  Partial{{ u.name }}Unknown
+}
+
+/// Decode Partial{{ u.name }} from dynamic value
+pub fn partial_{{ u.name | snake_case }}_decoder(value: Dynamic) -> Result(Partial{{ u.name }}, String) {
+  // Try each variant decoder in order
+  {%- for variant in u.variants %}
+  case {{ variant.partial_decoder }}(value) {
+    Ok(val) -> Ok(Partial{{ u.name }}{{ variant.name }}(val))
+    Error(_) -> Ok(Partial{{ u.name }}Unknown)
+  }
+  {%- endfor %}
+}
+{%- endfor %}

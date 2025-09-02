@@ -1,0 +1,230 @@
+//// Generated BAML types
+
+import gleam/option.{type Option, None, Some}
+import gleam/dict.{type Dict}
+import gleam/json
+import gleam/dynamic.{type Dynamic}
+import gleam/result
+
+{#- Generate Enums -#}
+{%- for e in enums %}
+
+{%- if let Some(docstring) = e.docstring %}
+/// {{ docstring }}
+{%- endif %}
+pub type {{ e.name }} {
+  {%- for value in e.values %}
+  {%- if let Some(doc) = value.docstring %}
+  /// {{ doc }}
+  {%- endif %}
+  {{ value.name }}
+  {%- endfor %}
+  {%- if e.dynamic %}
+  {{ e.name }}Other(String)
+  {%- endif %}
+}
+
+/// Convert {{ e.name }} to string
+pub fn {{ e.name | snake_case }}_to_string(value: {{ e.name }}) -> String {
+  case value {
+    {%- for value in e.values %}
+    {{ value.name }} -> "{{ value.name }}"
+    {%- endfor %}
+    {%- if e.dynamic %}
+    {{ e.name }}Other(s) -> s
+    {%- endif %}
+  }
+}
+
+/// Parse {{ e.name }} from string
+pub fn {{ e.name | snake_case }}_from_string(value: String) -> Result({{ e.name }}, String) {
+  case value {
+    {%- for value in e.values %}
+    "{{ value.name }}" -> Ok({{ value.name }})
+    {%- endfor %}
+    {%- if e.dynamic %}
+    other -> Ok({{ e.name }}Other(other))
+    {%- else %}
+    _ -> Error("Invalid {{ e.name }} value: " <> value)
+    {%- endif %}
+  }
+}
+
+/// Encode {{ e.name }} to JSON
+pub fn {{ e.name | snake_case }}_encoder(value: {{ e.name }}) -> json.Json {
+  json.string({{ e.name | snake_case }}_to_string(value))
+}
+
+/// Decode {{ e.name }} from dynamic value
+pub fn {{ e.name | snake_case }}_decoder(value: Dynamic) -> Result({{ e.name }}, String) {
+  use str <- result.try(
+    dynamic.string(value)
+    |> result.map_error(fn(_) { "Expected string for {{ e.name }}" })
+  )
+  {{ e.name | snake_case }}_from_string(str)
+}
+{%- endfor %}
+
+{#- Generate Classes -#}
+{%- for class in classes %}
+
+{%- if let Some(docstring) = class.docstring %}
+/// {{ docstring }}
+{%- endif %}
+pub type {{ class.name }} {
+  {{ class.name }}(
+    {%- for field in class.fields %}
+    {%- if let Some(doc) = field.docstring %}
+    /// {{ doc }}
+    {%- endif %}
+    {{ field.name }}: {{ field.gleam_type }},
+    {%- endfor %}
+    {%- if class.dynamic %}
+    /// Additional dynamic properties
+    dynamic_properties: Dict(String, Dynamic),
+    {%- endif %}
+  )
+}
+
+/// Create a new {{ class.name }}
+pub fn new_{{ class.name | snake_case }}(
+  {%- for field in class.fields %}
+  {{ field.name }}: {{ field.gleam_type }},
+  {%- endfor %}
+  {%- if class.dynamic %}
+  dynamic_properties: Dict(String, Dynamic),
+  {%- endif %}
+) -> {{ class.name }} {
+  {{ class.name }}(
+    {%- for field in class.fields %}
+    {{ field.name }}: {{ field.name }},
+    {%- endfor %}
+    {%- if class.dynamic %}
+    dynamic_properties: dynamic_properties,
+    {%- endif %}
+  )
+}
+
+/// Encode {{ class.name }} to JSON
+pub fn {{ class.name | snake_case }}_encoder(value: {{ class.name }}) -> json.Json {
+  let {{ class.name }}(
+    {%- for field in class.fields %}
+    {{ field.name }}: {{ field.name }},
+    {%- endfor %}
+    {%- if class.dynamic %}
+    dynamic_properties: dynamic_properties,
+    {%- endif %}
+  ) = value
+  
+  let base_fields = [
+    {%- for field in class.fields %}
+    #("{{ field.name }}", {{ field.encoder }}({{ field.name }})),
+    {%- endfor %}
+  ]
+  
+  {%- if class.dynamic %}
+  let dynamic_fields = dict.to_list(dynamic_properties)
+    |> list.map(fn(pair) {
+      let #(key, value) = pair
+      #(key, dynamic.unsafe_coerce(value))
+    })
+  
+  json.object(list.append(base_fields, dynamic_fields))
+  {%- else %}
+  json.object(base_fields)
+  {%- endif %}
+}
+
+/// Decode {{ class.name }} from dynamic value
+pub fn {{ class.name | snake_case }}_decoder(value: Dynamic) -> Result({{ class.name }}, String) {
+  use obj <- result.try(
+    dynamic.dict(dynamic.string, dynamic.dynamic)(value)
+    |> result.map_error(fn(_) { "Expected object for {{ class.name }}" })
+  )
+  
+  {%- for field in class.fields %}
+  use {{ field.name }} <- result.try(
+    {%- if field.optional %}
+    case dict.get(obj, "{{ field.name }}") {
+      Ok(val) -> {{ field.inner_decoder }}(val) |> result.map(Some)
+      Error(_) -> Ok(None)
+    }
+    {%- else %}
+    dict.get(obj, "{{ field.name }}")
+    |> result.replace_error("Missing field: {{ field.name }}")
+    |> result.then({{ field.decoder }})
+    {%- endif %}
+  )
+  {%- endfor %}
+  
+  {%- if class.dynamic %}
+  let static_fields = [
+    {%- for field in class.fields %}
+    "{{ field.name }}",
+    {%- endfor %}
+  ]
+  
+  let dynamic_properties = obj
+    |> dict.filter(fn(key, _) { !list.contains(static_fields, key) })
+  {%- endif %}
+  
+  Ok({{ class.name }}(
+    {%- for field in class.fields %}
+    {{ field.name }}: {{ field.name }},
+    {%- endfor %}
+    {%- if class.dynamic %}
+    dynamic_properties: dynamic_properties,
+    {%- endif %}
+  ))
+}
+{%- endfor %}
+
+{#- Generate Type Aliases for recursive types -#}
+{%- for alias in structural_recursive_alias_cycles %}
+
+/// Type alias: {{ alias.name }}
+pub type {{ alias.name }} = {{ alias.target }}
+
+/// Encoder for {{ alias.name }}
+pub fn {{ alias.name | snake_case }}_encoder(value: {{ alias.name }}) -> json.Json {
+  {{ alias.target_encoder }}(value)
+}
+
+/// Decoder for {{ alias.name }}
+pub fn {{ alias.name | snake_case }}_decoder(value: Dynamic) -> Result({{ alias.name }}, String) {
+  {{ alias.target_decoder }}(value)
+}
+{%- endfor %}
+
+{#- Generate Union Types -#}
+{%- for u in unions %}
+
+{%- if let Some(docstring) = u.docstring %}
+/// {{ docstring }}
+{%- endif %}
+pub type {{ u.name }} {
+  {%- for variant in u.variants %}
+  {{ u.name }}{{ variant.name }}({{ variant.gleam_type }})
+  {%- endfor %}
+}
+
+/// Encode {{ u.name }} to JSON
+pub fn {{ u.name | snake_case }}_encoder(value: {{ u.name }}) -> json.Json {
+  case value {
+    {%- for variant in u.variants %}
+    {{ u.name }}{{ variant.name }}(val) -> {{ variant.encoder }}(val)
+    {%- endfor %}
+  }
+}
+
+/// Decode {{ u.name }} from dynamic value
+pub fn {{ u.name | snake_case }}_decoder(value: Dynamic) -> Result({{ u.name }}, String) {
+  // Try each variant decoder in order
+  {%- for variant in u.variants %}
+  case {{ variant.decoder }}(value) {
+    Ok(val) -> Ok({{ u.name }}{{ variant.name }}(val))
+    Error(_) -> Error("Could not decode {{ u.name }} from variant")
+  }
+  {%- endfor %}
+}
+{%- endfor %}

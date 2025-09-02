@@ -1,42 +1,32 @@
-use internal_baml_core::ir::FunctionNode;
-use crate::package::CurrentRenderPackage;
+use internal_baml_core::ir::FunctionWalker;
 
-pub struct GleamFunction {
-    pub name: String,
-    pub params: Vec<GleamParam>,
-    pub return_type: crate::r#type::TypeGleam,
-}
+use crate::{
+    functions::FunctionGleam,
+    package::CurrentRenderPackage,
+};
 
-pub struct GleamParam {
-    pub name: String,
-    pub r#type: crate::r#type::TypeGleam,
-}
-
-pub fn ir_function_to_gleam(function: &FunctionNode, pkg: &CurrentRenderPackage) -> GleamFunction {
-    let params = function
-        .elem
+pub fn ir_function_to_gleam(function: &FunctionWalker, pkg: &CurrentRenderPackage) -> FunctionGleam {
+    let args = function
         .inputs()
         .iter()
-        .map(|(name, field_type)| {
-            let param_type = crate::ir_to_gleam::type_to_gleam(
-                &field_type.to_non_streaming_type(pkg.ir.as_ref()),
-                pkg.ir.as_ref()
-            );
-            GleamParam {
-                name: name.clone(),
-                r#type: param_type,
-            }
+        .map(|(name, r#type)| {
+            let non_streaming = r#type.to_non_streaming_type(pkg.ir.as_ref());
+            let gleam_type = super::type_to_gleam(&non_streaming, pkg);
+            (name.clone(), gleam_type)
         })
         .collect();
 
-    let return_type = crate::ir_to_gleam::type_to_gleam(
-        &function.elem.output().to_non_streaming_type(pkg.ir.as_ref()),
-        pkg.ir.as_ref()
-    );
+    let output_non_streaming = function.output().to_non_streaming_type(pkg.ir.as_ref());
+    let output_streaming = function.output().to_streaming_type(pkg.ir.as_ref());
+    
+    let return_type = super::type_to_gleam(&output_non_streaming, pkg);
+    let stream_return_type = super::stream_type_to_gleam(&output_streaming, pkg);
 
-    GleamFunction {
-        name: function.elem.name().to_string(),
-        params,
+    FunctionGleam {
+        documentation: function.item.attributes.get("description").and_then(|v| v.as_string_value(&Default::default()).ok()).flatten(),
+        name: function.name().to_string(),
+        args,
         return_type,
+        stream_return_type,
     }
 }

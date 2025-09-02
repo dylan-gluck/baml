@@ -1,0 +1,200 @@
+//// Generated BAML FFI bindings
+//// This module provides Foreign Function Interface bindings to the BAML runtime
+
+import gleam/option.{type Option}
+import gleam/dict.{type Dict}
+import gleam/dynamic.{type Dynamic}
+import gleam/result
+
+/// Opaque handle to the BAML runtime
+pub type RuntimeHandle
+
+/// Opaque handle to a context manager
+pub type ContextHandle  
+
+/// Opaque handle to a stream
+pub type StreamHandle
+
+/// Opaque handle to a type registry
+pub type TypeRegistry
+
+/// Opaque handle to a client registry
+pub type ClientRegistryHandle
+
+// Erlang target FFI bindings
+@target(erlang)
+@external(erlang, "baml_ffi", "runtime_from_files")
+pub fn runtime_from_files(
+  path: String,
+  file_map: Dict(String, String)
+) -> RuntimeHandle
+
+@target(erlang)
+@external(erlang, "baml_ffi", "runtime_from_directory")
+pub fn runtime_from_directory(path: String) -> RuntimeHandle
+
+@target(erlang)
+@external(erlang, "baml_ffi", "create_context_manager")
+pub fn create_context_manager(runtime: RuntimeHandle) -> ContextHandle
+
+@target(erlang)
+@external(erlang, "baml_ffi", "call_function")
+pub fn call_function(
+  runtime: RuntimeHandle,
+  function_name: String,
+  args: String,
+  ctx: ContextHandle,
+  client_registry: Option(ClientRegistryHandle),
+  type_builder: Option(TypeRegistry),
+) -> Result(Dynamic, String)
+
+@target(erlang)
+@external(erlang, "baml_ffi", "call_function_sync")
+pub fn call_function_sync(
+  runtime: RuntimeHandle,
+  function_name: String,
+  args: String,
+  ctx: ContextHandle,
+  client_registry: Option(ClientRegistryHandle),
+  type_builder: Option(TypeRegistry),
+) -> Result(Dynamic, String)
+
+@target(erlang)
+@external(erlang, "baml_ffi", "stream_function")
+pub fn stream_function(
+  runtime: RuntimeHandle,
+  function_name: String,
+  args: String,
+  ctx: ContextHandle,
+  client_registry: Option(ClientRegistryHandle),
+  type_builder: Option(TypeRegistry),
+) -> Result(StreamHandle, String)
+
+@target(erlang)
+@external(erlang, "baml_ffi", "stream_next")
+pub fn stream_next(stream: StreamHandle) -> Result(Option(Dynamic), String)
+
+@target(erlang)
+@external(erlang, "baml_ffi", "stream_close")
+pub fn stream_close(stream: StreamHandle) -> Nil
+
+@target(erlang)
+@external(erlang, "baml_ffi", "create_type_registry")
+pub fn create_type_registry() -> TypeRegistry
+
+@target(erlang)
+@external(erlang, "baml_ffi", "add_type")
+pub fn add_type(
+  registry: TypeRegistry,
+  type_name: String,
+  type_def: String
+) -> TypeRegistry
+
+@target(erlang)
+@external(erlang, "baml_ffi", "create_client_registry")
+pub fn create_client_registry() -> ClientRegistryHandle
+
+@target(erlang)
+@external(erlang, "baml_ffi", "add_client")
+pub fn add_client(
+  registry: ClientRegistryHandle,
+  client_name: String,
+  provider: String,
+  options: String
+) -> ClientRegistryHandle
+
+@target(erlang)
+@external(erlang, "baml_ffi", "set_default_client")
+pub fn set_default_client(
+  registry: ClientRegistryHandle,
+  client_name: String
+) -> ClientRegistryHandle
+
+// JavaScript target FFI bindings
+@target(javascript)
+@external(javascript, "../baml_gleam_ffi.mjs", "runtime_from_files")
+pub fn runtime_from_files(
+  path: String,
+  file_map: Dict(String, String)
+) -> RuntimeHandle
+
+@target(javascript)
+@external(javascript, "../baml_gleam_ffi.mjs", "runtime_from_directory")
+pub fn runtime_from_directory(path: String) -> RuntimeHandle
+
+@target(javascript)
+@external(javascript, "../baml_gleam_ffi.mjs", "create_context_manager")
+pub fn create_context_manager(runtime: RuntimeHandle) -> ContextHandle
+
+@target(javascript)
+@external(javascript, "../baml_gleam_ffi.mjs", "call_function")
+pub fn call_function(
+  runtime: RuntimeHandle,
+  function_name: String,
+  args: String,
+  ctx: ContextHandle,
+  client_registry: Option(ClientRegistryHandle),
+  type_builder: Option(TypeRegistry),
+) -> Result(Dynamic, String)
+
+@target(javascript)
+@external(javascript, "../baml_gleam_ffi.mjs", "call_function_sync")
+pub fn call_function_sync(
+  runtime: RuntimeHandle,
+  function_name: String,
+  args: String,
+  ctx: ContextHandle,
+  client_registry: Option(ClientRegistryHandle),
+  type_builder: Option(TypeRegistry),
+) -> Result(Dynamic, String)
+
+@target(javascript)
+@external(javascript, "../baml_gleam_ffi.mjs", "stream_function")
+pub fn stream_function(
+  runtime: RuntimeHandle,
+  function_name: String,
+  args: String,
+  ctx: ContextHandle,
+  client_registry: Option(ClientRegistryHandle),
+  type_builder: Option(TypeRegistry),
+) -> Result(StreamHandle, String)
+
+@target(javascript)
+@external(javascript, "../baml_gleam_ffi.mjs", "stream_next")
+pub fn stream_next(stream: StreamHandle) -> Result(Option(Dynamic), String)
+
+@target(javascript)
+@external(javascript, "../baml_gleam_ffi.mjs", "stream_close")
+pub fn stream_close(stream: StreamHandle) -> Nil
+
+@target(javascript)
+@external(javascript, "../baml_gleam_ffi.mjs", "create_type_registry")
+pub fn create_type_registry() -> TypeRegistry
+
+@target(javascript)
+@external(javascript, "../baml_gleam_ffi.mjs", "add_type")
+pub fn add_type(
+  registry: TypeRegistry,
+  type_name: String,
+  type_def: String
+) -> TypeRegistry
+
+@target(javascript)
+@external(javascript, "../baml_gleam_ffi.mjs", "create_client_registry")
+pub fn create_client_registry() -> ClientRegistryHandle
+
+@target(javascript)
+@external(javascript, "../baml_gleam_ffi.mjs", "add_client")
+pub fn add_client(
+  registry: ClientRegistryHandle,
+  client_name: String,
+  provider: String,
+  options: String
+) -> ClientRegistryHandle
+
+@target(javascript)
+@external(javascript, "../baml_gleam_ffi.mjs", "set_default_client")
+pub fn set_default_client(
+  registry: ClientRegistryHandle,
+  client_name: String
+) -> ClientRegistryHandle
