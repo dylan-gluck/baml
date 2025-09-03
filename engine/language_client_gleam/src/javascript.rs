@@ -44,12 +44,10 @@ impl WasmBamlRuntime {
         let files = parse_files(files)?;
         let env_vars = parse_env_vars(env_vars)?;
         
-        match BamlRuntimeWrapper::from_string(baml_src, files, env_vars) {
-            Ok(runtime) => Ok(WasmBamlRuntime {
-                runtime: Arc::new(runtime),
-            }),
-            Err(e) => Err(JsValue::from_str(&e.to_string())),
-        }
+        // TODO: Implement when from_string is available
+        // For now, return an error
+        let _ = (baml_src, files, env_vars);
+        Err(JsValue::from_str("from_string is not yet implemented"))
     }
 
     /// Call a BAML function synchronously

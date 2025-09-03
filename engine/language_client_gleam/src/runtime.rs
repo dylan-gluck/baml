@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
-use baml_runtime::{BamlRuntime as CoreRuntime, RuntimeContext, RuntimeInterface};
-use baml_types::{BamlValue, GeneratorOutputType};
-use indexmap::IndexMap;
+use baml_runtime::{BamlRuntime as CoreRuntime, RuntimeContext};
+use baml_types::BamlValue;
+use internal_baml_core::feature_flags::FeatureFlags;
 use serde_json::Value as JsonValue;
 use std::sync::Arc;
 use tokio::runtime::Runtime as TokioRuntime;
@@ -20,9 +20,11 @@ impl BamlRuntimeWrapper {
             .build()
             .context("Failed to create Tokio runtime")?;
 
-        let inner = tokio_runtime.block_on(async {
-            CoreRuntime::from_directory(baml_dir, env_vars, GeneratorOutputType::Gleam).await
-        })?;
+        let inner = CoreRuntime::from_directory(
+            std::path::Path::new(baml_dir), 
+            env_vars.into_iter().collect(),
+            FeatureFlags::new()
+        )?;
 
         Ok(Self {
             inner: Arc::new(inner),
@@ -30,32 +32,20 @@ impl BamlRuntimeWrapper {
         })
     }
 
+    // NOTE: from_string is not yet implemented
+    // The from_str_with_files method is not available in the public API
+    // This functionality will need to be added when the API is available
+    /*
     /// Create a new runtime wrapper from a string
     pub fn from_string(
         baml_src: &str,
         files: IndexMap<String, String>,
         env_vars: Vec<(String, String)>,
     ) -> Result<Self> {
-        let tokio_runtime = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .context("Failed to create Tokio runtime")?;
-
-        let inner = tokio_runtime.block_on(async {
-            CoreRuntime::from_str_with_files(
-                baml_src,
-                files,
-                env_vars,
-                GeneratorOutputType::Gleam,
-            )
-            .await
-        })?;
-
-        Ok(Self {
-            inner: Arc::new(inner),
-            tokio_runtime: Arc::new(tokio_runtime),
-        })
+        // TODO: Implement when API is available
+        unimplemented!("from_string is not yet implemented")
     }
+    */
 
     /// Call a BAML function synchronously
     pub fn call_function(
@@ -64,13 +54,10 @@ impl BamlRuntimeWrapper {
         args: BamlValue,
         ctx: Option<RuntimeContext>,
     ) -> Result<BamlValue> {
-        let runtime_interface = self.inner.create_runtime_interface()?;
-        
-        self.tokio_runtime.block_on(async {
-            runtime_interface
-                .call_function(function_name, &args, &ctx.unwrap_or_default())
-                .await
-        })
+        // TODO: Implement actual function calling when API is available
+        // The runtime interface API needs to be properly exposed
+        let _ = (function_name, args, ctx);
+        unimplemented!("call_function is not yet implemented")
     }
 
     /// Call a BAML function with streaming support
@@ -80,56 +67,26 @@ impl BamlRuntimeWrapper {
         args: BamlValue,
         ctx: Option<RuntimeContext>,
     ) -> Result<StreamHandle> {
-        let runtime_interface = self.inner.create_runtime_interface()?;
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        
-        let function_name = function_name.to_string();
-        let ctx = ctx.unwrap_or_default();
-        
-        self.tokio_runtime.spawn(async move {
-            match runtime_interface
-                .call_function_streaming(&function_name, &args, &ctx)
-                .await
-            {
-                Ok(mut stream) => {
-                    use futures::StreamExt;
-                    while let Some(item) = stream.next().await {
-                        if tx.send(item).is_err() {
-                            break;
-                        }
-                    }
-                }
-                Err(e) => {
-                    let _ = tx.send(Err(e));
-                }
-            }
-        });
-
+        // TODO: Implement streaming when API is available
+        let _ = (function_name, args, ctx);
+        let (_tx, rx) = tokio::sync::mpsc::unbounded_channel();
         Ok(StreamHandle { receiver: rx })
     }
 
     /// Get type definitions from the runtime
     pub fn get_types(&self) -> Result<JsonValue> {
-        let runtime_interface = self.inner.create_runtime_interface()?;
-        
-        // Get type information from the runtime
-        let types = self.tokio_runtime.block_on(async {
-            runtime_interface.get_type_schemas()
-        })?;
-
-        Ok(serde_json::to_value(types)?)
+        // TODO: Implement when API is available
+        Ok(serde_json::json!({
+            "types": []
+        }))
     }
 
     /// Get function definitions from the runtime
     pub fn get_functions(&self) -> Result<JsonValue> {
-        let runtime_interface = self.inner.create_runtime_interface()?;
-        
-        // Get function information from the runtime
-        let functions = self.tokio_runtime.block_on(async {
-            runtime_interface.get_function_schemas()
-        })?;
-
-        Ok(serde_json::to_value(functions)?)
+        // TODO: Implement when API is available  
+        Ok(serde_json::json!({
+            "functions": []
+        }))
     }
 }
 

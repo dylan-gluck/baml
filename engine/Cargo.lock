@@ -1039,6 +1039,7 @@ dependencies = [
  "baml-log",
  "baml-runtime",
  "baml-types",
+ "base64 0.22.1",
  "console_error_panic_hook",
  "dashmap 5.5.3",
  "env_logger",

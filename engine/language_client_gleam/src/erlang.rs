@@ -51,19 +51,10 @@ fn init_runtime_from_string<'a>(
 ) -> NifResult<Term<'a>> {
     let files_map: IndexMap<String, String> = files.into_iter().collect();
     
-    match BamlRuntimeWrapper::from_string(&baml_src, files_map, env_vars) {
-        Ok(runtime) => {
-            let runtime_arc = Arc::new(runtime);
-            RUNTIME.set(runtime_arc.clone()).ok();
-            
-            let resource = ResourceArc::new(RuntimeResource {
-                runtime: runtime_arc,
-            });
-            
-            Ok((ok_atom(env), resource).encode(env))
-        }
-        Err(e) => Ok((error_atom(env), e.to_string()).encode(env)),
-    }
+    // TODO: Implement when from_string is available
+    // For now, return an error
+    let _ = (baml_src, files_map, env_vars);
+    Ok((error_atom(env), "from_string is not yet implemented").encode(env))
 }
 
 /// Call a BAML function synchronously
@@ -82,7 +73,7 @@ fn call_function<'a>(
     };
     
     // Parse context if provided
-    let runtime_ctx = if !ctx.is_atom() || ctx.decode::<Atom>()?.name() != "nil" {
+    let runtime_ctx = if !ctx.is_atom() || ctx.decode::<Atom>()? != Atom::from_str(env, "nil").unwrap() {
         match parse_runtime_context(env, ctx) {
             Ok(c) => Some(c),
             Err(e) => return Ok((error_atom(env), e.to_string()).encode(env)),
@@ -117,7 +108,7 @@ fn call_function_streaming<'a>(
     };
     
     // Parse context if provided
-    let runtime_ctx = if !ctx.is_atom() || ctx.decode::<Atom>()?.name() != "nil" {
+    let runtime_ctx = if !ctx.is_atom() || ctx.decode::<Atom>()? != Atom::from_str(env, "nil").unwrap() {
         match parse_runtime_context(env, ctx) {
             Ok(c) => Some(c),
             Err(e) => return Ok((error_atom(env), e.to_string()).encode(env)),
@@ -227,14 +218,19 @@ fn error_atom(env: Env) -> Atom {
     Atom::from_str(env, "error").unwrap()
 }
 
-fn parse_runtime_context<'a>(env: Env<'a>, term: Term<'a>) -> Result<RuntimeContext> {
+fn parse_runtime_context<'a>(_env: Env<'a>, term: Term<'a>) -> Result<RuntimeContext> {
+    use std::sync::Arc;
+    use std::collections::HashMap;
+    use indexmap::IndexMap;
+    use baml_types::BamlValue;
+    
     // Parse runtime context from Erlang term
     // This is a simplified version - expand as needed
     let map: rustler::types::map::MapIterator = term
         .decode()
         .map_err(|e| anyhow::anyhow!("Failed to decode context: {:?}", e))?;
     
-    let mut ctx = RuntimeContext::new();
+    let mut tags = HashMap::new();
     
     for (key, value) in map {
         let key_str: String = key
@@ -246,21 +242,30 @@ fn parse_runtime_context<'a>(env: Env<'a>, term: Term<'a>) -> Result<RuntimeCont
             // This would need proper implementation based on BAML's requirements
         } else if key_str == "tags" {
             // Handle tags
-            let tags: Vec<String> = value
+            let tag_list: Vec<String> = value
                 .decode()
                 .map_err(|e| anyhow::anyhow!("Failed to decode tags: {:?}", e))?;
-            for tag in tags {
-                ctx.add_tag(&tag);
+            for tag in tag_list {
+                tags.insert(tag.clone(), BamlValue::String(tag));
             }
         }
     }
     
+    let ctx = RuntimeContext::new(
+        Arc::new(None), // baml_src
+        HashMap::new(), // env
+        tags, // tags
+        None, // client_overrides
+        IndexMap::new(), // class_override
+        IndexMap::new(), // enum_overrides
+        IndexMap::new(), // type_alias_overrides
+        Vec::new(), // recursive_class_overrides
+        Vec::new(), // recursive_type_alias_overrides
+        Vec::new(), // call_id_stack
+    );
+    
     Ok(ctx)
 }
-
-// Resource implementation for Rustler
-impl rustler::resource::Resource for RuntimeResource {}
-impl rustler::resource::Resource for StreamResource {}
 
 // Initialize the NIF module
 rustler::init!(

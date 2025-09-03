@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use baml_types::{BamlValue, BamlValueWithProvenance};
+use baml_types::BamlValue;
 use indexmap::IndexMap;
 use serde_json::Value as JsonValue;
 
@@ -74,47 +74,61 @@ pub fn baml_value_to_json(value: BamlValue) -> JsonValue {
             JsonValue::Object(obj)
         }
         BamlValue::Media(media) => {
-            match media {
-                baml_types::BamlMedia::Image(img) => {
+            use baml_types::{BamlMediaContent, BamlMediaType};
+            
+            let media_type_str = match media.media_type {
+                BamlMediaType::Image => "image",
+                BamlMediaType::Audio => "audio",
+                BamlMediaType::Pdf => "pdf",
+                BamlMediaType::Video => "video",
+            };
+            
+            let content_data = match &media.content {
+                BamlMediaContent::Url(url) => serde_json::json!({
+                    "url": url.url,
+                }),
+                BamlMediaContent::Base64(base64) => serde_json::json!({
+                    "base64": base64.base64,
+                }),
+                BamlMediaContent::File(file) => {
+                    // Use relpath as the file reference since path() returns Result
                     serde_json::json!({
-                        "__media__": "image",
-                        "mime_type": img.mime_type,
-                        "data": img.data,
+                        "file": file.relpath.display().to_string(),
                     })
-                }
-                baml_types::BamlMedia::Audio(audio) => {
-                    serde_json::json!({
-                        "__media__": "audio",
-                        "mime_type": audio.mime_type,
-                        "data": audio.data,
-                    })
-                }
-                baml_types::BamlMedia::Pdf(pdf) => {
-                    serde_json::json!({
-                        "__media__": "pdf",
-                        "mime_type": pdf.mime_type,
-                        "data": pdf.data,
-                    })
-                }
-                baml_types::BamlMedia::Video(video) => {
-                    serde_json::json!({
-                        "__media__": "video",
-                        "mime_type": video.mime_type,
-                        "data": video.data,
-                    })
+                },
+            };
+            
+            let mut result = serde_json::json!({
+                "__media__": media_type_str,
+            });
+            
+            if let Some(mime) = &media.mime_type {
+                result["mime_type"] = serde_json::json!(mime);
+            }
+            
+            // Merge content data
+            if let serde_json::Value::Object(content_map) = content_data {
+                if let serde_json::Value::Object(result_map) = &mut result {
+                    for (k, v) in content_map {
+                        result_map.insert(k, v);
+                    }
                 }
             }
+            
+            result
         }
     }
 }
 
-/// Convert a BAML value with provenance to JSON
-pub fn baml_value_with_provenance_to_json(value: BamlValueWithProvenance) -> JsonValue {
-    serde_json::json!({
-        "value": baml_value_to_json(value.value),
-        "provenance": value.provenance,
-    })
-}
+// NOTE: BamlValueWithProvenance is not part of the public API
+// This function is commented out until the type is available
+// /// Convert a BAML value with provenance to JSON
+// pub fn baml_value_with_provenance_to_json(value: BamlValueWithProvenance) -> JsonValue {
+//     serde_json::json!({
+//         "value": baml_value_to_json(value.value),
+//         "provenance": value.provenance,
+//     })
+// }
 
 /// Parse JSON arguments into a BAML value map
 pub fn parse_json_args(args: JsonValue) -> Result<BamlValue> {
@@ -138,16 +152,14 @@ pub mod erlang_conversion {
     /// Convert an Erlang term to a BAML value
     pub fn term_to_baml_value<'a>(env: Env<'a>, term: Term<'a>) -> Result<BamlValue> {
         if term.is_atom() {
-            let atom: Atom = term.decode().map_err(|e| anyhow!("Failed to decode atom: {:?}", e))?;
+            // Convert atom to string for comparison
+            let atom_str = term.atom_to_string().map_err(|e| anyhow!("Failed to convert atom to string: {:?}", e))?;
             
-            if atom.name() == "nil" || atom.name() == "undefined" {
-                Ok(BamlValue::Null)
-            } else if atom.name() == "true" {
-                Ok(BamlValue::Bool(true))
-            } else if atom.name() == "false" {
-                Ok(BamlValue::Bool(false))
-            } else {
-                Ok(BamlValue::String(atom.name().to_string()))
+            match atom_str.as_str() {
+                "nil" | "undefined" => Ok(BamlValue::Null),
+                "true" => Ok(BamlValue::Bool(true)),
+                "false" => Ok(BamlValue::Bool(false)),
+                _ => Ok(BamlValue::String(atom_str))
             }
         } else if term.is_number() {
             if let Ok(i) = term.decode::<i64>() {
@@ -174,8 +186,7 @@ pub mod erlang_conversion {
             let mut baml_map = IndexMap::new();
             for (key, value) in map {
                 let key_str = if key.is_atom() {
-                    let atom: Atom = key.decode().map_err(|e| anyhow!("Failed to decode map key: {:?}", e))?;
-                    atom.name().to_string()
+                    key.atom_to_string().map_err(|e| anyhow!("Failed to decode map key: {:?}", e))?
                 } else if key.is_binary() {
                     key.decode().map_err(|e| anyhow!("Failed to decode map key: {:?}", e))?
                 } else {
@@ -191,12 +202,13 @@ pub mod erlang_conversion {
             let tuple: Vec<Term> = term.decode().map_err(|e| anyhow!("Failed to decode tuple: {:?}", e))?;
             
             if tuple.len() == 2 {
-                if let Ok(tag) = tuple[0].decode::<Atom>() {
-                    if tag.name() == "baml_enum" {
+                if tuple[0].is_atom() {
+                    let tag_str = tuple[0].atom_to_string().map_err(|e| anyhow!("Failed to convert tag atom: {:?}", e))?;
+                    if tag_str == "baml_enum" {
                         let (name, value): (String, String) = tuple[1].decode()
                             .map_err(|e| anyhow!("Failed to decode enum: {:?}", e))?;
                         return Ok(BamlValue::Enum(name, value));
-                    } else if tag.name() == "baml_class" {
+                    } else if tag_str == "baml_class" {
                         let (name, fields) = decode_class_fields(env, tuple[1])?;
                         return Ok(BamlValue::Class(name, fields));
                     }
@@ -232,7 +244,9 @@ pub mod erlang_conversion {
             BamlValue::Map(map) => {
                 let mut erlang_map = rustler::types::map::map_new(env);
                 for (k, v) in map {
-                    let key = Atom::from_str(env, &k).unwrap_or_else(|_| k.encode(env));
+                    let key = Atom::from_str(env, &k)
+                        .map(|a| a.encode(env))
+                        .unwrap_or_else(|_| k.encode(env));
                     let value = baml_value_to_term(env, v);
                     erlang_map = erlang_map.map_put(key, value).unwrap();
                 }
@@ -246,32 +260,42 @@ pub mod erlang_conversion {
                 let tag = Atom::from_str(env, "baml_class").unwrap();
                 let mut field_map = rustler::types::map::map_new(env);
                 for (k, v) in fields {
-                    let key = Atom::from_str(env, &k).unwrap_or_else(|_| k.encode(env));
+                    let key = Atom::from_str(env, &k)
+                        .map(|a| a.encode(env))
+                        .unwrap_or_else(|_| k.encode(env));
                     let value = baml_value_to_term(env, v);
                     field_map = field_map.map_put(key, value).unwrap();
                 }
                 (tag, (name, field_map)).encode(env)
             }
             BamlValue::Media(media) => {
+                use baml_types::{BamlMediaContent, BamlMediaType};
+                
                 let tag = Atom::from_str(env, "baml_media").unwrap();
-                match media {
-                    baml_types::BamlMedia::Image(img) => {
-                        let media_type = Atom::from_str(env, "image").unwrap();
-                        (tag, (media_type, img.mime_type, img.data)).encode(env)
+                
+                let media_type_atom = match media.media_type {
+                    BamlMediaType::Image => Atom::from_str(env, "image").unwrap(),
+                    BamlMediaType::Audio => Atom::from_str(env, "audio").unwrap(),
+                    BamlMediaType::Pdf => Atom::from_str(env, "pdf").unwrap(),
+                    BamlMediaType::Video => Atom::from_str(env, "video").unwrap(),
+                };
+                
+                let content_data = match &media.content {
+                    BamlMediaContent::Url(url) => {
+                        let url_tag = Atom::from_str(env, "url").unwrap();
+                        (url_tag, url.url.clone()).encode(env)
                     }
-                    baml_types::BamlMedia::Audio(audio) => {
-                        let media_type = Atom::from_str(env, "audio").unwrap();
-                        (tag, (media_type, audio.mime_type, audio.data)).encode(env)
+                    BamlMediaContent::Base64(base64) => {
+                        let base64_tag = Atom::from_str(env, "base64").unwrap();
+                        (base64_tag, base64.base64.clone()).encode(env)
                     }
-                    baml_types::BamlMedia::Pdf(pdf) => {
-                        let media_type = Atom::from_str(env, "pdf").unwrap();
-                        (tag, (media_type, pdf.mime_type, pdf.data)).encode(env)
+                    BamlMediaContent::File(file) => {
+                        let file_tag = Atom::from_str(env, "file").unwrap();
+                        (file_tag, file.relpath.display().to_string()).encode(env)
                     }
-                    baml_types::BamlMedia::Video(video) => {
-                        let media_type = Atom::from_str(env, "video").unwrap();
-                        (tag, (media_type, video.mime_type, video.data)).encode(env)
-                    }
-                }
+                };
+                
+                (tag, (media_type_atom, media.mime_type.clone(), content_data)).encode(env)
             }
         }
     }
@@ -289,8 +313,7 @@ pub mod erlang_conversion {
         let mut fields = IndexMap::new();
         for (key, value) in fields_map {
             let key_str = if key.is_atom() {
-                let atom: Atom = key.decode().map_err(|e| anyhow!("Failed to decode field key: {:?}", e))?;
-                atom.name().to_string()
+                key.atom_to_string().map_err(|e| anyhow!("Failed to decode field key: {:?}", e))?
             } else if key.is_binary() {
                 key.decode().map_err(|e| anyhow!("Failed to decode field key: {:?}", e))?
             } else {

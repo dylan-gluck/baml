@@ -1,5 +1,7 @@
-use baml_runtime::{BamlSpan as CoreBamlSpan, RuntimeContext};
-use baml_types::{BamlMedia, BamlValue, TypeBuilder as CoreTypeBuilder};
+use baml_runtime::RuntimeContext;
+use baml_runtime::tracing::TracingCall;
+use baml_runtime::type_builder::TypeBuilder as CoreTypeBuilder;
+use baml_types::{BamlMedia, BamlValue};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -48,15 +50,16 @@ impl TypeBuilder {
         }
     }
 
-    pub fn add_enum(&mut self, name: String, values: Vec<String>) -> &mut Self {
-        self.inner.add_enum(name, values);
-        self
-    }
+    // TODO: Implement when TypeBuilder API is available
+    // pub fn add_enum(&mut self, name: String, values: Vec<String>) -> &mut Self {
+    //     self.inner.add_enum(name, values);
+    //     self
+    // }
 
-    pub fn add_class(&mut self, name: String, fields: HashMap<String, String>) -> &mut Self {
-        self.inner.add_class(name, fields);
-        self
-    }
+    // pub fn add_class(&mut self, name: String, fields: HashMap<String, String>) -> &mut Self {
+    //     self.inner.add_class(name, fields);
+    //     self
+    // }
 
     pub fn build(self) -> CoreTypeBuilder {
         self.inner
@@ -108,10 +111,14 @@ pub struct BamlImage {
 
 impl From<BamlImage> for BamlMedia {
     fn from(img: BamlImage) -> Self {
-        BamlMedia::Image(baml_types::media::Image {
-            mime_type: img.mime_type,
-            data: img.data,
-        })
+        use baml_types::BamlMediaType;
+        // Convert raw data to base64
+        let base64_data = base64::encode(&img.data);
+        BamlMedia::base64(
+            BamlMediaType::Image,
+            base64_data,
+            Some(img.mime_type),
+        )
     }
 }
 
@@ -124,10 +131,14 @@ pub struct BamlAudio {
 
 impl From<BamlAudio> for BamlMedia {
     fn from(audio: BamlAudio) -> Self {
-        BamlMedia::Audio(baml_types::media::Audio {
-            mime_type: audio.mime_type,
-            data: audio.data,
-        })
+        use baml_types::BamlMediaType;
+        // Convert raw data to base64
+        let base64_data = base64::encode(&audio.data);
+        BamlMedia::base64(
+            BamlMediaType::Audio,
+            base64_data,
+            Some(audio.mime_type),
+        )
     }
 }
 
@@ -140,10 +151,14 @@ pub struct BamlPdf {
 
 impl From<BamlPdf> for BamlMedia {
     fn from(pdf: BamlPdf) -> Self {
-        BamlMedia::Pdf(baml_types::media::Pdf {
-            mime_type: pdf.mime_type,
-            data: pdf.data,
-        })
+        use baml_types::BamlMediaType;
+        // Convert raw data to base64
+        let base64_data = base64::encode(&pdf.data);
+        BamlMedia::base64(
+            BamlMediaType::Pdf,
+            base64_data,
+            Some(pdf.mime_type),
+        )
     }
 }
 
@@ -156,10 +171,14 @@ pub struct BamlVideo {
 
 impl From<BamlVideo> for BamlMedia {
     fn from(video: BamlVideo) -> Self {
-        BamlMedia::Video(baml_types::media::Video {
-            mime_type: video.mime_type,
-            data: video.data,
-        })
+        use baml_types::BamlMediaType;
+        // Convert raw data to base64
+        let base64_data = base64::encode(&video.data);
+        BamlMedia::base64(
+            BamlMediaType::Video,
+            base64_data,
+            Some(video.mime_type),
+        )
     }
 }
 
@@ -174,16 +193,13 @@ pub struct BamlSpan {
     pub attributes: HashMap<String, serde_json::Value>,
 }
 
-impl From<CoreBamlSpan> for BamlSpan {
-    fn from(span: CoreBamlSpan) -> Self {
-        BamlSpan {
-            span_id: span.span_id,
-            parent_id: span.parent_id,
-            name: span.name,
-            start_time: span.start_time,
-            end_time: span.end_time,
-            attributes: span.attributes,
-        }
+// Note: BamlSpan should wrap TracingCall from baml_runtime
+// This is a simplified representation for FFI purposes
+impl BamlSpan {
+    pub fn from_tracing_call(_call: Option<TracingCall>) -> Option<Self> {
+        // TODO: Implement proper conversion from TracingCall
+        // For now, return None as TracingCall details are internal
+        None
     }
 }
 
@@ -212,12 +228,27 @@ impl RuntimeContextBuilder {
     }
 
     pub fn build(self) -> RuntimeContext {
-        let mut ctx = RuntimeContext::new();
+        use std::sync::Arc;
+        use std::collections::HashMap;
+        use indexmap::IndexMap;
+        
+        // Convert tags Vec<String> to HashMap<String, BamlValue>
+        let mut tags_map = HashMap::new();
         for tag in self.tags {
-            ctx.add_tag(&tag);
+            tags_map.insert(tag.clone(), BamlValue::String(tag));
         }
-        // Note: ClientRegistry integration would need to be properly implemented
-        // based on BAML's actual requirements
-        ctx
+        
+        RuntimeContext::new(
+            Arc::new(None), // baml_src
+            HashMap::new(), // env
+            tags_map, // tags
+            None, // client_overrides
+            IndexMap::new(), // class_override
+            IndexMap::new(), // enum_overrides
+            IndexMap::new(), // type_alias_overrides
+            Vec::new(), // recursive_class_overrides
+            Vec::new(), // recursive_type_alias_overrides
+            Vec::new(), // call_id_stack
+        )
     }
 }

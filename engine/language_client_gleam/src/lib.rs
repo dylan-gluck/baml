@@ -34,23 +34,22 @@ pub fn get_log_level() -> &'static str {
 pub fn set_log_level(level: &str) -> Result<()> {
     level
         .parse()
-        .map(baml_log::set_log_level)
         .map_err(|_| anyhow::anyhow!("Invalid log level: {}", level))
+        .and_then(|lvl| baml_log::set_log_level(lvl).map_err(|e| anyhow::anyhow!("Failed to set log level: {}", e)))
 }
 
 /// Enable or disable JSON logging mode
 pub fn set_log_json_mode(json: bool) -> Result<()> {
-    baml_log::set_json_mode(json)
+    baml_log::set_json_mode(json).map_err(|e| anyhow::anyhow!("Failed to set JSON mode: {}", e))
 }
 
 /// Set the maximum chunk length for log messages
 pub fn set_log_max_chunk_length(length: usize) -> Result<()> {
-    baml_log::set_max_message_length(length)
+    baml_log::set_max_message_length(length).map_err(|e| anyhow::anyhow!("Failed to set max message length: {}", e))
 }
 
 // Export appropriate FFI bindings based on target
-#[cfg(feature = "erlang")]
-pub use erlang::*;
+// Note: Erlang exports are handled by the rustler::init! macro in erlang.rs
 
 #[cfg(feature = "javascript")]
 pub use javascript::*;
